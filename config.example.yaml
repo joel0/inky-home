@@ -1,0 +1,6 @@
+homeassistant:
+  access_token: YOUR ACCESS TOKEN HERE
+  url: http://homeassistant.local:8123/api
+display:
+  - name: Outdoor Temp
+    entity_id: sensor.openweathermap_temperature
