@@ -1,9 +1,22 @@
+from inky.auto import auto
 from homeassistant_api import Client
 import yaml
 
 def main() -> None:
     print('Starting Inky Home')
 
+    # Detect Inky display type
+    try:
+        display = auto()
+    except RuntimeError as err:
+        if str(err) != 'No EEPROM detected! You must manually initialise your Inky board.':
+            raise err
+        display = None
+        print('No Inky display found')
+    else:
+        print(f'Found Inky display: {display}')
+
+    # Load config
     with open('./config.yaml') as file:
         conf = yaml.safe_load(file)
     print(f'Loaded config: {conf}')
