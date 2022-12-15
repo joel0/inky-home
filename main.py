@@ -34,7 +34,10 @@ def main_loop(ha_client, conf) -> None:
     while True:
         print()
         for sensor in conf['display']:
-            display_sensor(ha_client, sensor)
+            try:
+                display_sensor(ha_client, sensor)
+            except Exception as ex:
+                print('Update error: ' + ex)
         display_now()
         time.sleep(5 * 60)
 
