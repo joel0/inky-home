@@ -78,7 +78,7 @@ def main_loop(ha_client: Client, inky_display: Optional[Inky], sensors: List[Sen
             try:
                 readings.append(sensor.read(ha_client))
             except Exception as ex:
-                print('Update error: ' + ex)
+                print('Update error: ', ex)
         display_readings(readings, inky_display)
         time.sleep(5 * 60)
 
