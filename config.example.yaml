@@ -1,6 +1,7 @@
 homeassistant:
   access_token: YOUR ACCESS TOKEN HERE
   url: http://homeassistant.local:8123/api
+update_interval_sec: 600 # 10 minutes
 display:
   - name: Outdoor Temp
     entity_id: sensor.openweathermap_temperature

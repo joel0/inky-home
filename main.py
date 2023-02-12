@@ -60,6 +60,8 @@ def main() -> None:
         conf = yaml.safe_load(file)
     print(f'Loaded config: {conf}')
 
+    update_interval = float(conf['update_interval_sec'])
+
     client = Client(
         conf['homeassistant']['url'],
         conf['homeassistant']['access_token']
@@ -69,9 +71,9 @@ def main() -> None:
     for sensor in conf['display']:
         sensors.append(SensorDefinition(sensor['entity_id'], sensor['name']))
 
-    main_loop(client, display, sensors)
+    main_loop(update_interval, client, display, sensors)
 
-def main_loop(ha_client: Client, inky_display: Optional[Inky], sensors: List[SensorDefinition]) -> None:
+def main_loop(update_interval: float, ha_client: Client, inky_display: Optional[Inky], sensors: List[SensorDefinition]) -> None:
     while True:
         readings: List[SensorReading] = []
         for sensor in sensors:
@@ -80,7 +82,7 @@ def main_loop(ha_client: Client, inky_display: Optional[Inky], sensors: List[Sen
             except Exception as ex:
                 print('Update error: ', ex)
         display_readings(readings, inky_display)
-        time.sleep(5 * 60)
+        time.sleep(update_interval)
 
 def format_updated_at(updated_at: datetime.datetime) -> str:
     return 'Updated at: ' + updated_at.strftime('%H:%M')
