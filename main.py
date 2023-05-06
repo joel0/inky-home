@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import time
 from typing import List, Optional
 import yaml
@@ -22,21 +22,32 @@ COLOR_SENSOR_NAME = 'black'
 COLOR_SENSOR_VALUE = 'black'
 
 class SensorDefinition:
-    def __init__(self, entity_id: str, name: str) -> None:
+    def __init__(self, entity_id: str, name: str, config: Optional[dict]) -> None:
         self.entity_id = entity_id
         self.name = name
+        self.config = config
 
     def read(self, ha_client: Client) -> 'SensorReading':
         entity = ha_client.get_entity(entity_id = self.entity_id)
-        val = entity.state.state
-        unit = entity.state.attributes['unit_of_measurement']
-        return SensorReading(self.name, val, unit)
+        if self.config is not None and 'forecast' in self.config:
+            i = self.config['forecast']['index']
+            key = self.config['forecast']['attribute']
+            val = entity.state.attributes['forecast'][i][key]
+            unit = entity.state.attributes['%s_unit' % key]
+            dt = entity.state.attributes['forecast'][i]['datetime']
+            extra = datetime.fromisoformat(dt).astimezone().isoformat(timespec='minutes',sep=' ')
+        else:
+            val = entity.state.state
+            unit = entity.state.attributes['unit_of_measurement']
+            extra = None
+        return SensorReading(self.name, val, unit, extra)
 
 class SensorReading:
-    def __init__(self, name: str, value: str, unit: str) -> None:
+    def __init__(self, name: str, value: str, unit: str, extra: Optional[str]) -> None:
         self.name = name
         self.value = value
         self.unit = unit
+        self.extra = extra
 
     def formatted_value(self) -> str:
         return '%s %s' % (self.value, self.unit)
@@ -69,7 +80,7 @@ def main() -> None:
 
     sensors: List[SensorDefinition] = []
     for sensor in conf['display']:
-        sensors.append(SensorDefinition(sensor['entity_id'], sensor['name']))
+        sensors.append(SensorDefinition(sensor['entity_id'], sensor['name'], sensor.get('config')))
 
     main_loop(update_interval, client, display, sensors)
 
@@ -84,20 +95,23 @@ def main_loop(update_interval: float, ha_client: Client, inky_display: Optional[
         display_readings(readings, inky_display)
         time.sleep(update_interval)
 
-def format_updated_at(updated_at: datetime.datetime) -> str:
+def format_updated_at(updated_at: datetime) -> str:
     return 'Updated at: ' + updated_at.strftime('%H:%M')
 
 def display_readings(readings: List[SensorReading], inky_display: Optional[Inky]):
-    updated_at = datetime.datetime.now()
+    updated_at = datetime.now()
     display_readings_stdout(updated_at, readings)
     display_readings_inky(updated_at, readings, inky_display)
 
-def display_readings_stdout(updated_at: datetime.datetime, readings: List[SensorReading]):
+def display_readings_stdout(updated_at: datetime, readings: List[SensorReading]):
     print(format_updated_at(updated_at))
     for reading in readings:
-        print('%s: %s %s' % (reading.name, reading.value, reading.unit))
+        if reading.extra:
+            print('%s: %s %s (%s)' % (reading.name, reading.value, reading.unit, reading.extra))
+        else:
+            print('%s: %s %s' % (reading.name, reading.value, reading.unit))
 
-def display_readings_inky(updated_at: datetime.datetime, readings: List[SensorReading], inky_display: Optional[Inky]):
+def display_readings_inky(updated_at: datetime, readings: List[SensorReading], inky_display: Optional[Inky]):
     if inky_display is None:
         return
     str_updated = format_updated_at(updated_at)
@@ -115,6 +129,9 @@ def display_readings_inky(updated_at: datetime.datetime, readings: List[SensorRe
         offset = (offset[0], draw.textbbox(offset, reading.name, FONT_SENSOR_NAME)[3])
         draw.text(offset, reading.formatted_value(), COLOR_SENSOR_VALUE, FONT_SENSOR_VALUE)
         offset = (offset[0], draw.textbbox(offset, reading.formatted_value(), FONT_SENSOR_VALUE)[3])
+        if reading.extra:
+            draw.text(offset, reading.extra, COLOR_SENSOR_VALUE, FONT_SENSOR_NAME)
+            offset = (offset[0], draw.textbbox(offset, reading.extra, FONT_SENSOR_NAME)[3])
 
     inky_display.set_image(img)
     inky_display.show(busy_wait=False)
