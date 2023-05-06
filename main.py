@@ -29,9 +29,10 @@ class SensorDefinition:
 
     def read(self, ha_client: Client) -> 'SensorReading':
         entity = ha_client.get_entity(entity_id = self.entity_id)
-        if self.config is not None and 'forecast' in self.config:
-            i = self.config['forecast']['index']
-            key = self.config['forecast']['attribute']
+        forecast_cfg = self.get_config('forecast')
+        if forecast_cfg is not None:
+            i = forecast_cfg['index']
+            key = forecast_cfg['attribute']
             val = entity.state.attributes['forecast'][i][key]
             unit = entity.state.attributes['%s_unit' % key]
             dt = entity.state.attributes['forecast'][i]['datetime']
@@ -40,7 +41,22 @@ class SensorDefinition:
             val = entity.state.state
             unit = entity.state.attributes['unit_of_measurement']
             extra = None
+
+        rounding_cfg = self.get_config('decimals')
+        if rounding_cfg is not None:
+            try:
+                val = float(val)
+                val = f'{val:.{rounding_cfg}f}'
+            except ValueError:
+                pass
         return SensorReading(self.name, val, unit, extra)
+
+    def get_config(self, key: str) -> Optional[any]:
+        if self.config is None:
+            return None
+        if key not in self.config:
+            return None
+        return self.config[key]
 
 class SensorReading:
     def __init__(self, name: str, value: str, unit: str, extra: Optional[str]) -> None:

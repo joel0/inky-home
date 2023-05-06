@@ -4,11 +4,14 @@ homeassistant:
 update_interval_sec: 600 # 10 minutes
   - name: Outdoor Temp
     entity_id: sensor.openweathermap_temperature
+    config:
+      decimals: 1
   - name: Outdoor Humidity
     entity_id: sensor.openweathermap_humidity
   - name: Forecast Temp
     entity_id: weather.openweathermap
     config:
+      decimals: 0
       forecast:
         index: 1
         attribute: temperature
