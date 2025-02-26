@@ -31,11 +31,15 @@ class SensorDefinition:
         entity = ha_client.get_entity(entity_id = self.entity_id)
         forecast_cfg = self.get_config('forecast')
         if forecast_cfg is not None:
-            i = forecast_cfg['index']
             key = forecast_cfg['attribute']
-            val = entity.state.attributes['forecast'][i][key]
             unit = entity.state.attributes['%s_unit' % key]
-            dt = entity.state.attributes['forecast'][i]['datetime']
+            i = forecast_cfg['index']
+
+            response = ha_client.trigger_service_with_response('weather', 'get_forecasts', entity_id=self.entity_id, type='daily')
+            forecast = response[1][self.entity_id]['forecast'][i]
+
+            val = forecast[key]
+            dt = forecast['datetime']
             extra = datetime.fromisoformat(dt).astimezone().isoformat(timespec='minutes',sep=' ')
         else:
             val = entity.state.state
