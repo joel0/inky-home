@@ -3,9 +3,12 @@ import time
 from typing import List, Optional
 import yaml
 from inky.auto import auto
-from inky.inky_uc8159 import Inky # Assumes Inky Impression
+from inky.inky_uc8159 import Inky, DESATURATED_PALETTE
 from homeassistant_api import Client
 from PIL import Image, ImageDraw, ImageFont
+from cairosvg import svg2png
+from io import BytesIO
+import os
 
 FONT = "DejaVuSans.ttf"
 FONT_SIZE_UPDATED_AT = 25
@@ -20,6 +23,28 @@ FONT_SENSOR_VALUE = ImageFont.truetype(FONT, FONT_SIZE_SENSOR_VALUE)
 COLOR_UPDATED_AT = 'black'
 COLOR_SENSOR_NAME = 'black'
 COLOR_SENSOR_VALUE = 'black'
+
+ICON_DIR = "icons"
+ICON_SIZE = 64
+ICON_GAP = 10
+
+ICON_COLORS = {
+    'sunny': DESATURATED_PALETTE[Inky.YELLOW],
+    'clear-night': DESATURATED_PALETTE[Inky.BLUE],
+    'cloudy': DESATURATED_PALETTE[Inky.BLUE],
+    'partlycloudy': DESATURATED_PALETTE[Inky.BLUE],
+    'rainy': DESATURATED_PALETTE[Inky.BLUE],
+    'pouring': DESATURATED_PALETTE[Inky.BLUE],
+    'snowy': DESATURATED_PALETTE[Inky.BLACK],
+    'snowy-rainy': DESATURATED_PALETTE[Inky.BLACK],
+    'fog': DESATURATED_PALETTE[Inky.BLACK],
+    'windy': DESATURATED_PALETTE[Inky.GREEN],
+    'windy-variant': DESATURATED_PALETTE[Inky.GREEN],
+    'lightning': DESATURATED_PALETTE[Inky.RED],
+    'lightning-rainy': DESATURATED_PALETTE[Inky.RED],
+    'hail': DESATURATED_PALETTE[Inky.RED],
+    'exceptional': DESATURATED_PALETTE[Inky.RED],
+}
 
 class SensorDefinition:
     def __init__(self, entity_id: str, name: str, config: Optional[dict]) -> None:
@@ -41,10 +66,12 @@ class SensorDefinition:
             val = forecast[key]
             dt = forecast['datetime']
             extra = datetime.fromisoformat(dt).astimezone().isoformat(timespec='minutes',sep=' ')
+            forecast_condition = forecast.get('condition')
         else:
             val = entity.state.state
             unit = entity.state.attributes['unit_of_measurement']
             extra = None
+            forecast_condition = None
 
         rounding_cfg = self.get_config('decimals')
         if rounding_cfg is not None:
@@ -53,7 +80,7 @@ class SensorDefinition:
                 val = f'{val:.{rounding_cfg}f}'
             except ValueError:
                 pass
-        return SensorReading(self.name, val, unit, extra)
+        return SensorReading(self.name, val, unit, extra, forecast_condition)
 
     def get_config(self, key: str) -> Optional[any]:
         if self.config is None:
@@ -63,11 +90,12 @@ class SensorDefinition:
         return self.config[key]
 
 class SensorReading:
-    def __init__(self, name: str, value: str, unit: str, extra: Optional[str]) -> None:
+    def __init__(self, name: str, value: str, unit: str, extra: Optional[str], weather_condition: Optional[str] = None) -> None:
         self.name = name
         self.value = value
         self.unit = unit
         self.extra = extra
+        self.weather_condition = weather_condition
 
     def formatted_value(self) -> str:
         return '%s %s' % (self.value, self.unit)
@@ -140,6 +168,21 @@ def draw_centered_text(draw, img, text, font, color, offset_y):
     bbox = draw.textbbox((x, offset_y), text, font)
     return bbox[3]
 
+def render_icon(condition):
+    """Render a weather icon SVG to a PIL Image. Returns None if icon not found."""
+    svg_path = os.path.join(ICON_DIR, f"{condition}.svg")
+    if not os.path.exists(svg_path):
+        return None
+    color = ICON_COLORS.get(condition)
+    if not color:
+        return None
+    with open(svg_path) as f:
+        svg_content = f.read()
+    hex_color = '#%02x%02x%02x' % tuple(color)
+    svg_content = svg_content.replace('fill="currentColor"', f'fill="{hex_color}"')
+    png_data = svg2png(bytestring=svg_content.encode(), output_width=ICON_SIZE, output_height=ICON_SIZE)
+    return Image.open(BytesIO(png_data)).convert('RGBA')
+
 def display_readings_inky(updated_at: datetime, readings: List[SensorReading], inky_display: Optional[Inky]):
     if inky_display is None:
         return
@@ -156,18 +199,32 @@ def display_readings_inky(updated_at: datetime, readings: List[SensorReading], i
     for i, reading in enumerate(readings):
         offset_y = draw_centered_text(draw, img, reading.name, FONT_SENSOR_NAME, COLOR_SENSOR_NAME, offset_y) + 5
 
-        offset_y = draw_centered_text(draw, img, reading.formatted_value(), FONT_SENSOR_VALUE, COLOR_SENSOR_VALUE, offset_y) + 20
+        icon = render_icon(reading.weather_condition) if reading.weather_condition else None
+        value_text = reading.formatted_value()
+        bbox = draw.textbbox((0, 0), value_text, FONT_SENSOR_VALUE)
+        value_w = bbox[2] - bbox[0]
+
+        if icon:
+            icon_w = ICON_SIZE + ICON_GAP + value_w
+            group_x = (img.width - icon_w) // 2
+            img.paste(icon, (group_x, int(offset_y)), icon)
+            value_x = group_x + ICON_SIZE + ICON_GAP
+        else:
+            value_x = (img.width - value_w) // 2
+
+        draw.text((value_x, offset_y), value_text, COLOR_SENSOR_VALUE, FONT_SENSOR_VALUE)
+        offset_y = draw.textbbox((value_x, offset_y), value_text, FONT_SENSOR_VALUE)[3] + 20
 
         if reading.extra:
             offset_y = draw_centered_text(draw, img, reading.extra, FONT_SENSOR_NAME, COLOR_SENSOR_NAME, offset_y) + 20
 
         if i < len(readings) - 1:
             line_y = offset_y + 15
-            draw.line([(60, line_y), (img.width - 60, line_y)], fill='#cccccc', width=1)
+            draw.line([(60, line_y), (img.width - 60, line_y)], fill='#cccccc', width=3)
             offset_y = line_y + 15
 
     img = img.rotate(90, expand=True)
-    inky_display.set_image(img)
+    inky_display.set_image(img, saturation=0.0)
     inky_display.show(busy_wait=False)
 
 if __name__ == '__main__':

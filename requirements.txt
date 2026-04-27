@@ -6,6 +6,7 @@ appdirs==1.4.4
 async-timeout==5.0.1
 attrs==25.1.0
 Brotli==1.1.0
+cairosvg==2.5.2
 cattrs==24.1.2
 certifi==2025.1.31
 cffi==1.17.1
