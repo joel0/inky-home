@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 FONT = "DejaVuSans.ttf"
 FONT_SIZE_UPDATED_AT = 25
 FONT_SIZE_SENSOR_NAME = 30
-FONT_SIZE_SENSOR_VALUE = 80
+FONT_SIZE_SENSOR_VALUE = 65
 MARGIN = (10, 10)
 
 FONT_UPDATED_AT = ImageFont.truetype(FONT, FONT_SIZE_UPDATED_AT)
@@ -131,28 +131,42 @@ def display_readings_stdout(updated_at: datetime, readings: List[SensorReading])
         else:
             print('%s: %s %s' % (reading.name, reading.value, reading.unit))
 
+def draw_centered_text(draw, img, text, font, color, offset_y):
+    """Draw text centered horizontally. Returns the y-coordinate of the text bottom."""
+    bbox = draw.textbbox((0, 0), text, font)
+    text_w = bbox[2] - bbox[0]
+    x = (img.width - text_w) // 2
+    draw.text((x, offset_y), text, color, font)
+    bbox = draw.textbbox((x, offset_y), text, font)
+    return bbox[3]
+
 def display_readings_inky(updated_at: datetime, readings: List[SensorReading], inky_display: Optional[Inky]):
     if inky_display is None:
         return
     str_updated = format_updated_at(updated_at)
 
-    img = Image.new('RGB', inky_display.resolution, 'white')
+    img = Image.new('RGB', (inky_display.resolution[1], inky_display.resolution[0]), 'white')
     draw = ImageDraw.Draw(img)
 
     bbox = draw.textbbox((0, 0), str_updated, FONT_UPDATED_AT)
-    offset = (MARGIN[0], img.height - MARGIN[1] - bbox[3])
+    offset = (MARGIN[0], img.height - MARGIN[1] - (bbox[3] - bbox[1]))
     draw.text(offset, str_updated, COLOR_UPDATED_AT, FONT_UPDATED_AT)
 
-    offset = MARGIN
-    for reading in readings:
-        draw.text(offset, reading.name, COLOR_SENSOR_NAME, FONT_SENSOR_NAME)
-        offset = (offset[0], draw.textbbox(offset, reading.name, FONT_SENSOR_NAME)[3])
-        draw.text(offset, reading.formatted_value(), COLOR_SENSOR_VALUE, FONT_SENSOR_VALUE)
-        offset = (offset[0], draw.textbbox(offset, reading.formatted_value(), FONT_SENSOR_VALUE)[3])
-        if reading.extra:
-            draw.text(offset, reading.extra, COLOR_SENSOR_VALUE, FONT_SENSOR_NAME)
-            offset = (offset[0], draw.textbbox(offset, reading.extra, FONT_SENSOR_NAME)[3])
+    offset_y = MARGIN[1]
+    for i, reading in enumerate(readings):
+        offset_y = draw_centered_text(draw, img, reading.name, FONT_SENSOR_NAME, COLOR_SENSOR_NAME, offset_y) + 5
 
+        offset_y = draw_centered_text(draw, img, reading.formatted_value(), FONT_SENSOR_VALUE, COLOR_SENSOR_VALUE, offset_y) + 20
+
+        if reading.extra:
+            offset_y = draw_centered_text(draw, img, reading.extra, FONT_SENSOR_NAME, COLOR_SENSOR_NAME, offset_y) + 20
+
+        if i < len(readings) - 1:
+            line_y = offset_y + 15
+            draw.line([(60, line_y), (img.width - 60, line_y)], fill='#cccccc', width=1)
+            offset_y = line_y + 15
+
+    img = img.rotate(90, expand=True)
     inky_display.set_image(img)
     inky_display.show(busy_wait=False)
 
